@@ -3,7 +3,7 @@ Resources:
   - TargetService:
       Type: AWS::ECS::Service
       Properties:
-        TaskDefinition: "joshi-todo-app-task"
+        TaskDefinition: "<TASK_DEFINITION>" #"joshi-todo-app-task"
         LoadBalancerInfo:
           ContainerName: "todo-app"
           ContainerPort: 3000
