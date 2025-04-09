@@ -379,7 +379,7 @@ Resources:
       ServiceRole: !GetAtt joshiCodeBuildRole.Arn
       Artifacts:
         Type: S3
-        Location: !Sub joshi-codepipeline-artifacts-${AWS::AccountId}
+        Location: !Sub joshi-wild-rydes-codepipeline-artifacts-${AWS::AccountId}
         Name: BuildArtifact
         NamespaceType: NONE
         Packaging: ZIP
@@ -426,63 +426,11 @@ Resources:
                   - iam:PassRole
                 Resource: '*'
   
-  # --- CodeDeploy Application ---
-  CodeDeployApplication:
-    Type: AWS::CodeDeploy::Application
-    Properties:
-      ComputePlatform: ECS
-      ApplicationName: joshi-codedeploy-app
-  
-  # --- CodeDeploy Deployment Group ---
-  CodeDeployDeploymentGroup:
-    Type: AWS::CodeDeploy::DeploymentGroup
-    DependsOn:
-      - CodeDeployApplication
-      - joshiECSService
-    Properties:
-      ApplicationName: !Ref CodeDeployApplication
-      DeploymentGroupName: joshi-deployment-group
-      ServiceRoleArn: !GetAtt CodeDeployRole.Arn
-      DeploymentConfigName: CodeDeployDefault.ECSAllAtOnce
-      DeploymentStyle:
-        DeploymentType: BLUE_GREEN
-        DeploymentOption: WITH_TRAFFIC_CONTROL
-      ECSService:
-        ClusterName: !Ref joshiECSCluster
-        ServiceName: !Ref joshiECSService
-      LoadBalancerInfo:
-        TargetGroupPairInfoList:
-          - TargetGroups:
-              - Name: !Ref joshiTargetGroup
-            ProdTrafficRoute:
-              ListenerArns:
-                - !Ref joshiListener
-
-  # --- CodeDeploy Role ---
-    CodeDeployRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: joshi-codedeploy-role
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service:
-                - codedeploy.amazonaws.com
-            Action:
-              - sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSCodeDeployRoleForECS
-
-
-
-  
   # --- Add S3 Bucket for Artifacts ---
   JoshiCodePipelineArtifactsBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub joshi-codepipeline-artifacts-${AWS::AccountId}
+      BucketName: !Sub joshi-wild-rydes-codepipeline-artifacts-${AWS::AccountId}
       AccessControl: Private
       LifecycleConfiguration:
         Rules:
@@ -504,7 +452,7 @@ Resources:
       RoleArn: !GetAtt joshiCodePipelineRole.Arn
       ArtifactStore:
         Type: S3
-        Location: !Sub joshi-codepipeline-artifacts-${AWS::AccountId}
+        Location: !Sub joshi-wild-rydes-codepipeline-artifacts-${AWS::AccountId}
       Stages:
         - Name: Source
           Actions:
@@ -543,37 +491,20 @@ Resources:
                 - Name: BuildArtifact
               Configuration:
                 ProjectName: !Ref joshiCodeBuildProject
-        # - Name: Deploy
-        #   Actions:
-        #     - Name: Deploy
-        #       ActionTypeId:
-        #         Category: Deploy
-        #         Owner: AWS
-        #         Provider: ECS
-        #         Version: '1'
-        #       InputArtifacts:
-        #         - Name: BuildArtifact
-        #       Configuration:
-        #         ClusterName: !Ref joshiECSCluster
-        #         ServiceName: !Ref joshiECSService
-        #         FileName: imagedefinitions.json
         - Name: Deploy
           Actions:
-            - Name: DeployToECS
+            - Name: Deploy
               ActionTypeId:
                 Category: Deploy
                 Owner: AWS
-                Provider: CodeDeploy
+                Provider: ECS
                 Version: '1'
               InputArtifacts:
                 - Name: BuildArtifact
               Configuration:
-                ApplicationName: !Ref CodeDeployApplication
-                DeploymentGroupName: !Ref CodeDeployDeploymentGroup
-                TaskDefinitionTemplateArtifact: BuildArtifact
-                AppSpecTemplateArtifact: BuildArtifact
-                TaskDefinitionTemplatePath: imagedefinitions.json
-                AppSpecTemplatePath: appspec.yaml
+                ClusterName: !Ref joshiECSCluster
+                ServiceName: !Ref joshiECSService
+                FileName: imagedefinitions.json
 
 
   # --- SNS Topic for CloudWatch Alarm ---
