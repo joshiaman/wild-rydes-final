@@ -425,6 +425,73 @@ Resources:
                   - s3:*
                   - iam:PassRole
                 Resource: '*'
+  
+  # --- CodeDeploy Application ---
+  CodeDeployApplication:
+    Type: AWS::CodeDeploy::Application
+    Properties:
+      ComputePlatform: ECS
+      ApplicationName: joshi-codedeploy-app
+  
+  # --- CodeDeploy Deployment Group ---
+  CodeDeployDeploymentGroup:
+    Type: AWS::CodeDeploy::DeploymentGroup
+    DependsOn:
+      - CodeDeployApplication
+      - joshiECSService
+    Properties:
+      ApplicationName: !Ref CodeDeployApplication
+      DeploymentGroupName: joshi-deployment-group
+      ServiceRoleArn: !GetAtt CodeDeployRole.Arn
+      DeploymentConfigName: CodeDeployDefault.ECSAllAtOnce
+      DeploymentStyle:
+        DeploymentType: BLUE_GREEN
+        DeploymentOption: WITH_TRAFFIC_CONTROL
+      ECSService:
+        ClusterName: !Ref joshiECSCluster
+        ServiceName: !Ref joshiECSService
+      LoadBalancerInfo:
+        TargetGroupPairInfoList:
+          - TargetGroups:
+              - Name: !Ref joshiTargetGroup
+            ProdTrafficRoute:
+              ListenerArns:
+                - !Ref joshiListener
+
+  # --- CodeDeploy Role ---
+    CodeDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: joshi-codedeploy-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - codedeploy.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSCodeDeployRoleForECS
+
+
+
+  
+  # --- Add S3 Bucket for Artifacts ---
+  JoshiCodePipelineArtifactsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub joshi-codepipeline-artifacts-${AWS::AccountId}
+      AccessControl: Private
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldArtifacts
+            Status: Enabled
+            ExpirationInDays: 90  # Optional: Clean up artifacts after 90 days
+      Tags:
+        - Key: Name
+          Value: joshi-codepipeline-artifacts
 
   # --- CodePipeline ---
   joshiCodePipeline:
@@ -476,20 +543,38 @@ Resources:
                 - Name: BuildArtifact
               Configuration:
                 ProjectName: !Ref joshiCodeBuildProject
+        # - Name: Deploy
+        #   Actions:
+        #     - Name: Deploy
+        #       ActionTypeId:
+        #         Category: Deploy
+        #         Owner: AWS
+        #         Provider: ECS
+        #         Version: '1'
+        #       InputArtifacts:
+        #         - Name: BuildArtifact
+        #       Configuration:
+        #         ClusterName: !Ref joshiECSCluster
+        #         ServiceName: !Ref joshiECSService
+        #         FileName: imagedefinitions.json
         - Name: Deploy
           Actions:
-            - Name: Deploy
+            - Name: DeployToECS
               ActionTypeId:
                 Category: Deploy
                 Owner: AWS
-                Provider: ECS
+                Provider: CodeDeploy
                 Version: '1'
               InputArtifacts:
                 - Name: BuildArtifact
               Configuration:
-                ClusterName: !Ref joshiECSCluster
-                ServiceName: !Ref joshiECSService
-                FileName: imagedefinitions.json
+                ApplicationName: !Ref CodeDeployApplication
+                DeploymentGroupName: !Ref CodeDeployDeploymentGroup
+                TaskDefinitionTemplateArtifact: BuildArtifact
+                AppSpecTemplateArtifact: BuildArtifact
+                TaskDefinitionTemplatePath: imagedefinitions.json
+                AppSpecTemplatePath: appspec.yaml
+
 
   # --- SNS Topic for CloudWatch Alarm ---
   AlarmSNS:
